@@ -3,7 +3,15 @@
 import { usePlayerStore } from "@/store/usePlayerStore";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Play, Pause, SkipBack, SkipForward, Volume2, Music, ListMusic } from "lucide-react";
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  Music,
+  ListMusic,
+} from "lucide-react";
 import QueueSheet from "./QueueSheet";
 
 declare global {
@@ -14,29 +22,40 @@ declare global {
 }
 
 export default function Player() {
-  const { currentTrack, isPlaying, pause, resume, playNext, queue } =
+  const { currentTrack, isPlaying, pause, resume, playNext } =
     usePlayerStore();
+
   const playerRef = useRef<YT.Player | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastVideoRef = useRef<string | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const barFillRef = useRef<HTMLDivElement>(null);
+  const barThumbRef = useRef<HTMLDivElement>(null);
+  const timeRef = useRef<HTMLSpanElement>(null);
+  const durRef = useRef<HTMLSpanElement>(null);
+  const mobileFillRef = useRef<HTMLDivElement>(null);
+  const mobileTimeRef = useRef<HTMLSpanElement>(null);
+  const mobileDurRef = useRef<HTMLSpanElement>(null);
+  const progressData = useRef({ progress: 0, duration: 0 });
+
   const [apiReady, setApiReady] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(80);
   const [showQueue, setShowQueue] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>(null);
-  const currentVideoRef = useRef<string | null>(null);
+  const [, forceRender] = useState(0);
+
   const playNextRef = useRef(playNext);
   playNextRef.current = playNext;
 
   useEffect(() => {
-    if (window.YT && window.YT.Player) {
+    if (window.YT?.Player) {
       setApiReady(true);
       return;
     }
-    const existing = document.querySelector(
+    const exists = document.querySelector(
       'script[src="https://www.youtube.com/iframe_api"]'
     );
-    if (!existing) {
+    if (!exists) {
       const tag = document.createElement("script");
       tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
@@ -46,77 +65,124 @@ export default function Player() {
 
   useEffect(() => {
     if (!apiReady || playerRef.current) return;
+
     const host = document.createElement("div");
-    host.id = "yt-player-host";
-    host.style.position = "fixed";
-    host.style.top = "-9999px";
-    host.style.left = "-9999px";
-    host.style.width = "1px";
-    host.style.height = "1px";
-    host.style.overflow = "hidden";
+    host.style.cssText =
+      "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden";
     document.body.appendChild(host);
 
     playerRef.current = new window.YT.Player(host, {
       height: "1",
       width: "1",
       playerVars: {
-        autoplay: 0, controls: 0, disablekb: 1, fs: 0,
-        modestbranding: 1, rel: 0, showinfo: 0, origin: window.location.origin,
+        autoplay: 0,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        modestbranding: 1,
+        rel: 0,
+        showinfo: 0,
+        origin: window.location.origin,
       },
       events: {
         onReady: () => {
           setPlayerReady(true);
           playerRef.current?.setVolume(80);
         },
-        onStateChange: (event: YT.OnStateChangeEvent) => {
-          if (event.data === YT.PlayerState.ENDED) playNextRef.current();
-          if (event.data === YT.PlayerState.PLAYING)
-            setDuration(playerRef.current?.getDuration() || 0);
+        onStateChange: (e: YT.OnStateChangeEvent) => {
+          if (e.data === YT.PlayerState.ENDED) {
+            playNextRef.current();
+          }
         },
       },
     });
   }, [apiReady]);
 
   useEffect(() => {
-    if (!playerReady || !playerRef.current || !currentTrack) return;
-    if (currentVideoRef.current !== currentTrack.videoId) {
-      currentVideoRef.current = currentTrack.videoId;
-      playerRef.current.loadVideoById(currentTrack.videoId);
-    }
+    const p = playerRef.current;
+    if (!playerReady || !p || !currentTrack) return;
+    if (lastVideoRef.current === currentTrack.videoId) return;
+
+    lastVideoRef.current = currentTrack.videoId;
+    progressData.current = { progress: 0, duration: 0 };
+    updateBarDOM(0, 0);
+
+    try {
+      p.loadVideoById(currentTrack.videoId);
+    } catch {}
   }, [currentTrack, playerReady]);
 
   useEffect(() => {
-    if (!playerReady || !playerRef.current) return;
+    const p = playerRef.current;
+    if (!playerReady || !p) return;
     try {
-      if (isPlaying) playerRef.current.playVideo();
-      else playerRef.current.pauseVideo();
+      if (isPlaying) p.playVideo();
+      else p.pauseVideo();
     } catch {}
   }, [isPlaying, playerReady]);
 
+  function updateBarDOM(t: number, d: number) {
+    const pct = d > 0 ? Math.min((t / d) * 100, 100) : 0;
+    if (barFillRef.current) barFillRef.current.style.width = `${pct}%`;
+    if (barThumbRef.current) barThumbRef.current.style.left = `calc(${pct}% - 6px)`;
+    if (mobileFillRef.current) mobileFillRef.current.style.width = `${pct}%`;
+    if (timeRef.current) timeRef.current.textContent = fmt(t);
+    if (durRef.current) durRef.current.textContent = fmt(d);
+    if (mobileTimeRef.current) mobileTimeRef.current.textContent = fmt(t);
+    if (mobileDurRef.current) mobileDurRef.current.textContent = fmt(d);
+  }
+
   useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (isPlaying && playerRef.current) {
-      intervalRef.current = setInterval(() => {
-        try {
-          if (playerRef.current?.getCurrentTime)
-            setProgress(playerRef.current.getCurrentTime());
-        } catch {}
-      }, 500);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isPlaying]);
+    if (!isPlaying || !playerReady) return;
 
-  function handleVolumeChange(val: number) {
+    const poll = () => {
+      const p = playerRef.current;
+      if (!p) return;
+      try {
+        const t = p.getCurrentTime?.();
+        const d = p.getDuration?.();
+        const time = typeof t === "number" ? t : 0;
+        const dur = typeof d === "number" && d > 0 ? d : progressData.current.duration;
+        progressData.current = { progress: time, duration: dur };
+        updateBarDOM(time, dur);
+      } catch {}
+    };
+
+    poll();
+    intervalRef.current = setInterval(poll, 250);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isPlaying, playerReady, currentTrack]);
+
+  function seekFromBar(clientX: number, bar: HTMLDivElement | null) {
+    if (!bar || progressData.current.duration <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const val = x * progressData.current.duration;
+    progressData.current.progress = val;
+    updateBarDOM(val, progressData.current.duration);
+    try {
+      playerRef.current?.seekTo(val, true);
+    } catch {}
+  }
+
+  function handleVolume(val: number) {
     setVolume(val);
-    try { playerRef.current?.setVolume(val); } catch {}
+    try {
+      playerRef.current?.setVolume(val);
+    } catch {}
   }
 
-  function handleSeek(val: number) {
-    try { playerRef.current?.seekTo(val, true); } catch {}
-    setProgress(val);
-  }
-
-  function formatTime(s: number) {
+  function fmt(s: number) {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
@@ -125,14 +191,16 @@ export default function Player() {
   if (!currentTrack) {
     return (
       <footer className="h-14 md:h-20 bg-[#181818] border-t border-[#282828] flex items-center justify-center mb-[52px] md:mb-0">
-        <p className="text-[#b3b3b3] text-xs md:text-sm">Select a song to start playing</p>
+        <p className="text-[#b3b3b3] text-xs md:text-sm">
+          Select a song to start playing
+        </p>
       </footer>
     );
   }
 
   return (
     <>
-      {/* Mobile player */}
+      {/* Mobile */}
       <footer className="md:hidden flex flex-col bg-[#181818] border-t border-[#282828] mb-[52px]">
         <div className="flex items-center px-3 py-2 gap-3">
           <div className="relative w-10 h-10 rounded overflow-hidden shrink-0">
@@ -179,19 +247,25 @@ export default function Player() {
             <SkipForward size={18} />
           </button>
         </div>
-        <div className="px-3 -mt-1 pb-1">
-          <input
-            type="range"
-            min={0}
-            max={duration || 100}
-            value={progress}
-            onChange={(e) => handleSeek(Number(e.target.value))}
-            className="w-full h-0.5 cursor-pointer"
-          />
+        <div className="flex items-center gap-2 mx-3 mb-1">
+          <span ref={mobileTimeRef} className="text-[10px] text-[#b3b3b3] tabular-nums w-7 text-right">0:00</span>
+          <div
+            className="relative flex-1 h-1 bg-[#404040] rounded-full cursor-pointer"
+            onClick={(e) => seekFromBar(e.clientX, e.currentTarget)}
+            onTouchStart={(e) => seekFromBar(e.touches[0].clientX, e.currentTarget)}
+            onTouchMove={(e) => seekFromBar(e.touches[0].clientX, e.currentTarget)}
+          >
+            <div
+              ref={mobileFillRef}
+              className="absolute top-0 left-0 h-full bg-[#1DB954] rounded-full"
+              style={{ width: "0%" }}
+            />
+          </div>
+          <span ref={mobileDurRef} className="text-[10px] text-[#b3b3b3] tabular-nums w-7">0:00</span>
         </div>
       </footer>
 
-      {/* Desktop player */}
+      {/* Desktop */}
       <footer className="hidden md:flex h-24 bg-[#181818] border-t border-[#282828] items-center px-4 gap-4">
         <div className="flex items-center gap-3 w-72 shrink-0">
           <div className="relative w-14 h-14 rounded-md overflow-hidden shadow-lg">
@@ -222,7 +296,11 @@ export default function Player() {
 
         <div className="flex-1 flex flex-col items-center gap-1.5 max-w-2xl">
           <div className="flex items-center gap-5">
-            <button onClick={playNext} className="text-[#b3b3b3] hover:text-white transition-colors" title="Previous">
+            <button
+              onClick={playNext}
+              className="text-[#b3b3b3] hover:text-white transition-colors"
+              title="Previous"
+            >
               <SkipBack size={18} />
             </button>
             <button
@@ -235,21 +313,33 @@ export default function Player() {
                 <Play size={16} fill="black" color="black" className="ml-0.5" />
               )}
             </button>
-            <button onClick={playNext} className="text-[#b3b3b3] hover:text-white transition-colors" title="Next">
+            <button
+              onClick={playNext}
+              className="text-[#b3b3b3] hover:text-white transition-colors"
+              title="Next"
+            >
               <SkipForward size={18} />
             </button>
           </div>
           <div className="w-full flex items-center gap-2 text-xs text-[#b3b3b3]">
-            <span className="w-10 text-right tabular-nums">{formatTime(progress)}</span>
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              value={progress}
-              onChange={(e) => handleSeek(Number(e.target.value))}
-              className="flex-1 h-1 cursor-pointer"
-            />
-            <span className="w-10 tabular-nums">{formatTime(duration)}</span>
+            <span ref={timeRef} className="w-10 text-right tabular-nums">0:00</span>
+            <div
+              ref={barRef}
+              className="relative flex-1 h-1 bg-[#404040] rounded-full group cursor-pointer"
+              onClick={(e) => seekFromBar(e.clientX, barRef.current)}
+            >
+              <div
+                ref={barFillRef}
+                className="absolute top-0 left-0 h-full bg-white group-hover:bg-[#1DB954] rounded-full"
+                style={{ width: "0%" }}
+              />
+              <div
+                ref={barThumbRef}
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ left: "-6px" }}
+              />
+            </div>
+            <span ref={durRef} className="w-10 tabular-nums">0:00</span>
           </div>
         </div>
 
@@ -267,7 +357,7 @@ export default function Player() {
             min={0}
             max={100}
             value={volume}
-            onChange={(e) => handleVolumeChange(Number(e.target.value))}
+            onChange={(e) => handleVolume(Number(e.target.value))}
             className="w-24 h-1 cursor-pointer"
           />
         </div>

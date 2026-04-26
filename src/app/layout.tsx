@@ -32,12 +32,7 @@ export default function RootLayout({
               {children}
             </main>
           </div>
-          <div className="hidden md:block">
-            <Player />
-          </div>
-          <div className="md:hidden">
-            <Player />
-          </div>
+          <Player />
           <BottomNav />
         </div>
       </body>

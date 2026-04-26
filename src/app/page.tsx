@@ -153,8 +153,53 @@ export default function HomePage() {
         </p>
       </section>
 
+      <section className="animate-fade-in-up" style={{ animationDelay: "0.05s" }}>
+        <SectionHeader title="Browse by mood" />
+        <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
+          {MOOD_CARDS.map((mood) => (
+            <Link
+              key={mood.label}
+              href={`/search?q=${encodeURIComponent(mood.query)}`}
+              className={`relative h-20 md:h-28 rounded-xl bg-gradient-to-br ${mood.gradient} p-3 md:p-4 overflow-hidden group hover:scale-[1.03] transition-transform cursor-pointer`}
+            >
+              <span className="text-sm md:text-lg font-bold text-white relative z-10">
+                {mood.label}
+              </span>
+              <span className="absolute -bottom-2 -right-2 text-4xl md:text-6xl text-white/15 select-none">
+                {mood.emoji}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {loading ? (
+        <SongRowSkeleton title="Trending now" />
+      ) : (
+        data?.trending &&
+        data.trending.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+            <SectionHeader title="Trending now" subtitle="Popular songs right now" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+              {data.trending.slice(0, 10).map((song, i) => (
+                <SongRow
+                  key={song.id}
+                  song={song}
+                  index={i + 1}
+                  isResolving={resolving === song.id}
+                  isActive={false}
+                  onClick={() => playSong(song)}
+                  formatDuration={formatDuration}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      )}
+
       {recentlyPlayed.length > 0 && (
-        <section className="animate-fade-in-up" style={{ animationDelay: "0.05s" }}>
+        <section className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+          <SectionHeader title="Recently played" />
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
             {recentlyPlayed.slice(0, 8).map((track) => (
               <button
@@ -192,50 +237,6 @@ export default function HomePage() {
             ))}
           </div>
         </section>
-      )}
-
-      <section className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-        <SectionHeader title="Browse by mood" />
-        <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-          {MOOD_CARDS.map((mood) => (
-            <Link
-              key={mood.label}
-              href={`/search?q=${encodeURIComponent(mood.query)}`}
-              className={`relative h-20 md:h-28 rounded-xl bg-gradient-to-br ${mood.gradient} p-3 md:p-4 overflow-hidden group hover:scale-[1.03] transition-transform cursor-pointer`}
-            >
-              <span className="text-sm md:text-lg font-bold text-white relative z-10">
-                {mood.label}
-              </span>
-              <span className="absolute -bottom-2 -right-2 text-4xl md:text-6xl text-white/15 select-none">
-                {mood.emoji}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {loading ? (
-        <SongRowSkeleton title="Trending now" />
-      ) : (
-        data?.trending &&
-        data.trending.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
-            <SectionHeader title="Trending now" subtitle="Popular songs right now" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-              {data.trending.slice(0, 10).map((song, i) => (
-                <SongRow
-                  key={song.id}
-                  song={song}
-                  index={i + 1}
-                  isResolving={resolving === song.id}
-                  isActive={false}
-                  onClick={() => playSong(song)}
-                  formatDuration={formatDuration}
-                />
-              ))}
-            </div>
-          </section>
-        )
       )}
 
       {loading ? (

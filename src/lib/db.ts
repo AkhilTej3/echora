@@ -1,53 +1,13 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
-const DB_PATH = path.join(process.cwd(), "music.db");
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-let db: Database.Database | null = null;
+export { supabase };
 
-export function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS tracks (
-        video_id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        thumbnail TEXT,
-        channel_name TEXT,
-        duration TEXT,
-        mood_tags TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS recently_played (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        video_id TEXT NOT NULL,
-        played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (video_id) REFERENCES tracks(video_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS playlists (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS playlist_tracks (
-        playlist_id TEXT NOT NULL,
-        video_id TEXT NOT NULL,
-        position INTEGER NOT NULL,
-        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (playlist_id, video_id),
-        FOREIGN KEY (playlist_id) REFERENCES playlists(id),
-        FOREIGN KEY (video_id) REFERENCES tracks(video_id)
-      );
-    `);
-  }
-  return db;
-}
-
-export function upsertTrack(track: {
+export async function upsertTrack(track: {
   videoId: string;
   title: string;
   thumbnail: string;
@@ -55,35 +15,49 @@ export function upsertTrack(track: {
   duration: string;
   moodTags: string[];
 }) {
-  const db = getDb();
-  db.prepare(
-    `INSERT OR REPLACE INTO tracks (video_id, title, thumbnail, channel_name, duration, mood_tags)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(
-    track.videoId,
-    track.title,
-    track.thumbnail,
-    track.channelName,
-    track.duration,
-    JSON.stringify(track.moodTags)
+  await supabase.from("tracks").upsert(
+    {
+      video_id: track.videoId,
+      title: track.title,
+      thumbnail: track.thumbnail,
+      channel_name: track.channelName,
+      duration: track.duration,
+      mood_tags: JSON.stringify(track.moodTags),
+    },
+    { onConflict: "video_id" }
   );
 }
 
-export function addToRecentlyPlayed(videoId: string) {
-  const db = getDb();
-  db.prepare("INSERT INTO recently_played (video_id) VALUES (?)").run(videoId);
+export async function addToRecentlyPlayed(videoId: string) {
+  await supabase.from("recently_played").insert({ video_id: videoId });
 }
 
-export function getRecentlyPlayed(limit = 20) {
-  const db = getDb();
-  return db
-    .prepare(
-      `SELECT t.*, MAX(rp.played_at) as played_at
-       FROM recently_played rp
-       JOIN tracks t ON t.video_id = rp.video_id
-       GROUP BY rp.video_id
-       ORDER BY played_at DESC
-       LIMIT ?`
-    )
-    .all(limit);
+export async function getRecentlyPlayed(limit = 20) {
+  const { data, error } = await supabase
+    .from("recently_played")
+    .select("video_id, played_at, tracks(*)")
+    .order("played_at", { ascending: false })
+    .limit(200);
+
+  if (error) throw error;
+
+  const seen = new Set<string>();
+  const deduped: Record<string, unknown>[] = [];
+  for (const row of data || []) {
+    if (!seen.has(row.video_id)) {
+      seen.add(row.video_id);
+      const t = row.tracks as Record<string, unknown>;
+      deduped.push({
+        video_id: t.video_id,
+        title: t.title,
+        thumbnail: t.thumbnail,
+        channel_name: t.channel_name,
+        duration: t.duration,
+        mood_tags: t.mood_tags,
+        played_at: row.played_at,
+      });
+      if (deduped.length >= limit) break;
+    }
+  }
+  return deduped;
 }

@@ -33,7 +33,8 @@
       "WebFetch(domain:phosphoricons.com)",
       "WebFetch(domain:heroicons.com)",
       "Bash(node -e \"const YouTube = require\\('youtube-sr'\\).default; YouTube.search\\('pop hits 2025 music', { limit: 5, type: 'video' }\\).then\\(r => console.log\\(JSON.stringify\\(r.length\\)\\)\\).catch\\(e => console.error\\('ERROR:', e.message\\)\\)\")",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

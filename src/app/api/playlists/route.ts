@@ -1,40 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, upsertTrack } from "@/lib/db";
+import { supabase, upsertTrack } from "@/lib/db";
 import { generateMoodTags } from "@/lib/mood";
 import { v4 as uuid } from "uuid";
 
 export async function GET(req: NextRequest) {
   try {
-    const db = getDb();
     const playlistId = req.nextUrl.searchParams.get("id");
 
     if (playlistId) {
-      const tracks = db
-        .prepare(
-          `SELECT t.video_id as videoId, t.title, t.thumbnail, t.channel_name as channelName,
-                  t.duration, t.mood_tags as moodTags
-           FROM playlist_tracks pt
-           JOIN tracks t ON t.video_id = pt.video_id
-           WHERE pt.playlist_id = ?
-           ORDER BY pt.position`
-        )
-        .all(playlistId) as Record<string, unknown>[];
-      const mappedTracks = tracks.map((t) => ({
-          ...t,
-          moodTags: t.moodTags ? JSON.parse(t.moodTags as string) : [],
-        }));
-      return NextResponse.json({ tracks: mappedTracks });
+      const { data, error } = await supabase
+        .from("playlist_tracks")
+        .select("position, tracks(*)")
+        .eq("playlist_id", playlistId)
+        .order("position", { ascending: true });
+
+      if (error) throw error;
+
+      const tracks = (data || []).map((row) => {
+        const t = row.tracks as Record<string, unknown>;
+        return {
+          videoId: t.video_id,
+          title: t.title,
+          thumbnail: t.thumbnail,
+          channelName: t.channel_name,
+          duration: t.duration,
+          moodTags: t.mood_tags ? JSON.parse(t.mood_tags as string) : [],
+        };
+      });
+
+      return NextResponse.json({ tracks });
     }
 
-    const playlists = db
-      .prepare(
-        `SELECT p.*, COUNT(pt.video_id) as track_count
-         FROM playlists p
-         LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
-         GROUP BY p.id
-         ORDER BY p.created_at DESC`
-      )
-      .all();
+    const { data, error } = await supabase
+      .from("playlists")
+      .select("*, playlist_tracks(count)")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const playlists = (data || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      created_at: p.created_at,
+      track_count: (p.playlist_tracks as { count: number }[])?.[0]?.count ?? 0,
+    }));
+
     return NextResponse.json({ playlists });
   } catch (error) {
     console.error("Playlists error:", error);
@@ -45,17 +55,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { name, track } = await req.json();
-    const db = getDb();
     const id = uuid();
 
-    db.prepare("INSERT INTO playlists (id, name) VALUES (?, ?)").run(id, name);
+    const { error } = await supabase.from("playlists").insert({ id, name });
+    if (error) throw error;
 
     if (track) {
       const moodTags = generateMoodTags(track.title, track.channelName);
-      upsertTrack({ ...track, moodTags });
-      db.prepare(
-        "INSERT INTO playlist_tracks (playlist_id, video_id, position) VALUES (?, ?, 0)"
-      ).run(id, track.videoId);
+      await upsertTrack({ ...track, moodTags });
+      await supabase
+        .from("playlist_tracks")
+        .insert({ playlist_id: id, video_id: track.videoId, position: 0 });
     }
 
     return NextResponse.json({ id, name });
@@ -68,20 +78,26 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const { playlistId, track } = await req.json();
-    const db = getDb();
 
     const moodTags = generateMoodTags(track.title, track.channelName);
-    upsertTrack({ ...track, moodTags });
+    await upsertTrack({ ...track, moodTags });
 
-    const maxPos = db
-      .prepare(
-        "SELECT COALESCE(MAX(position), -1) as pos FROM playlist_tracks WHERE playlist_id = ?"
-      )
-      .get(playlistId) as { pos: number };
+    const { data: maxRow } = await supabase
+      .from("playlist_tracks")
+      .select("position")
+      .eq("playlist_id", playlistId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .single();
 
-    db.prepare(
-      "INSERT OR IGNORE INTO playlist_tracks (playlist_id, video_id, position) VALUES (?, ?, ?)"
-    ).run(playlistId, track.videoId, maxPos.pos + 1);
+    const nextPos = maxRow ? maxRow.position + 1 : 0;
+
+    await supabase
+      .from("playlist_tracks")
+      .upsert(
+        { playlist_id: playlistId, video_id: track.videoId, position: nextPos },
+        { onConflict: "playlist_id,video_id" }
+      );
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
     const track = await req.json();
     const moodTags = generateMoodTags(track.title, track.channelName);
 
-    upsertTrack({ ...track, moodTags });
-    addToRecentlyPlayed(track.videoId);
+    await upsertTrack({ ...track, moodTags });
+    await addToRecentlyPlayed(track.videoId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   try {
-    const tracks = getRecentlyPlayed();
+    const tracks = await getRecentlyPlayed();
     return NextResponse.json({ tracks });
   } catch (error) {
     console.error("Get recently played error:", error);

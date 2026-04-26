@@ -8,8 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/postcss": "^4.2.4",
-    "better-sqlite3": "^12.9.0",
     "lucide-react": "^1.11.0",
     "next": "^16.2.4",
     "react": "^19.2.5",
@@ -20,7 +20,6 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

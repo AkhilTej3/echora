@@ -46,7 +46,7 @@ export async function getRecentlyPlayed(limit = 20) {
   for (const row of data || []) {
     if (!seen.has(row.video_id)) {
       seen.add(row.video_id);
-      const t = row.tracks as Record<string, unknown>;
+      const t = row.tracks as unknown as Record<string, unknown>;
       deduped.push({
         video_id: t.video_id,
         title: t.title,

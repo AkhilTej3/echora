@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       if (error) throw error;
 
       const tracks = (data || []).map((row) => {
-        const t = row.tracks as Record<string, unknown>;
+        const t = row.tracks as unknown as Record<string, unknown>;
         return {
           videoId: t.video_id,
           title: t.title,

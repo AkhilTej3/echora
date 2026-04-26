@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Home, Search, Library, Plus, Music } from "lucide-react";
+import UserMenu from "./UserMenu";
 
 interface Playlist {
   id: string;
@@ -145,8 +146,11 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <div className="px-6 py-3 text-[10px] text-[#b3b3b3]/50 tracking-widest uppercase">
-        Feel every frequency
+      <div className="px-6 py-3 flex items-center justify-between">
+        <span className="text-[10px] text-[#b3b3b3]/50 tracking-widest uppercase">
+          Feel every frequency
+        </span>
+        <UserMenu />
       </div>
     </aside>
   );

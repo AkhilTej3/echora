@@ -34,7 +34,12 @@
       "WebFetch(domain:heroicons.com)",
       "Bash(node -e \"const YouTube = require\\('youtube-sr'\\).default; YouTube.search\\('pop hits 2025 music', { limit: 5, type: 'video' }\\).then\\(r => console.log\\(JSON.stringify\\(r.length\\)\\)\\).catch\\(e => console.error\\('ERROR:', e.message\\)\\)\")",
       "Bash(taskkill //F //IM node.exe)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(cp -r album \"\\(app\\)/album\")",
+      "Bash(cp -r artist \"\\(app\\)/artist\")",
+      "Bash(cp -r library \"\\(app\\)/library\")",
+      "Bash(cp -r profile \"\\(app\\)/profile\")",
+      "Bash(cp -r search \"\\(app\\)/search\")"
     ]
   }
 }

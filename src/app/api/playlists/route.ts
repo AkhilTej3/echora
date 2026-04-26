@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, upsertTrack } from "@/lib/db";
 import { generateMoodTags } from "@/lib/mood";
+import { getUser } from "@/lib/auth";
 import { v4 as uuid } from "uuid";
 
 export async function GET(req: NextRequest) {
   try {
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const playlistId = req.nextUrl.searchParams.get("id");
 
     if (playlistId) {
+      const { data: playlist } = await supabase
+        .from("playlists")
+        .select("id")
+        .eq("id", playlistId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!playlist) {
+        return NextResponse.json({ error: "Not found", tracks: [] }, { status: 404 });
+      }
+
       const { data, error } = await supabase
         .from("playlist_tracks")
         .select("position, tracks(*)")
@@ -34,6 +49,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("playlists")
       .select("*, playlist_tracks(count)")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -54,10 +70,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { name, track } = await req.json();
     const id = uuid();
 
-    const { error } = await supabase.from("playlists").insert({ id, name });
+    const { error } = await supabase
+      .from("playlists")
+      .insert({ id, name, user_id: user.id });
     if (error) throw error;
 
     if (track) {
@@ -77,7 +98,21 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { playlistId, track } = await req.json();
+
+    const { data: playlist } = await supabase
+      .from("playlists")
+      .select("id")
+      .eq("id", playlistId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (!playlist) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     const moodTags = generateMoodTags(track.title, track.channelName);
     await upsertTrack({ ...track, moodTags });

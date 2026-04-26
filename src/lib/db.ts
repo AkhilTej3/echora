@@ -28,14 +28,17 @@ export async function upsertTrack(track: {
   );
 }
 
-export async function addToRecentlyPlayed(videoId: string) {
-  await supabase.from("recently_played").insert({ video_id: videoId });
+export async function addToRecentlyPlayed(videoId: string, userId: string) {
+  await supabase
+    .from("recently_played")
+    .insert({ video_id: videoId, user_id: userId });
 }
 
-export async function getRecentlyPlayed(limit = 20) {
+export async function getRecentlyPlayed(userId: string, limit = 20) {
   const { data, error } = await supabase
     .from("recently_played")
     .select("video_id, played_at, tracks(*)")
+    .eq("user_id", userId)
     .order("played_at", { ascending: false })
     .limit(200);
 

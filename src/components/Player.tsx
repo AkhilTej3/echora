@@ -121,6 +121,41 @@ export default function Player() {
     } catch {}
   }, [isPlaying, playerReady]);
 
+  // Media Session API for background playback & lock screen controls
+  useEffect(() => {
+    if (!currentTrack || !("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title,
+      artist: currentTrack.channelName,
+      artwork: currentTrack.thumbnail
+        ? [
+            { src: currentTrack.thumbnail, sizes: "96x96", type: "image/jpeg" },
+            { src: currentTrack.thumbnail, sizes: "128x128", type: "image/jpeg" },
+            { src: currentTrack.thumbnail, sizes: "256x256", type: "image/jpeg" },
+            { src: currentTrack.thumbnail, sizes: "512x512", type: "image/jpeg" },
+          ]
+        : [],
+    });
+
+    navigator.mediaSession.setActionHandler("play", () => resume());
+    navigator.mediaSession.setActionHandler("pause", () => pause());
+    navigator.mediaSession.setActionHandler("nexttrack", () => playNextRef.current());
+    navigator.mediaSession.setActionHandler("previoustrack", null);
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.seekTime != null) {
+        progressData.current.progress = details.seekTime;
+        updateBarDOM(details.seekTime, progressData.current.duration);
+        try { playerRef.current?.seekTo(details.seekTime, true); } catch {}
+      }
+    });
+  }, [currentTrack, pause, resume]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [isPlaying]);
+
   function updateBarDOM(t: number, d: number) {
     const pct = d > 0 ? Math.min((t / d) * 100, 100) : 0;
     if (barFillRef.current) barFillRef.current.style.width = `${pct}%`;
@@ -149,6 +184,13 @@ export default function Player() {
         const dur = typeof d === "number" && d > 0 ? d : progressData.current.duration;
         progressData.current = { progress: time, duration: dur };
         updateBarDOM(time, dur);
+        if ("mediaSession" in navigator && dur > 0) {
+          navigator.mediaSession.setPositionState({
+            duration: dur,
+            playbackRate: 1,
+            position: Math.min(time, dur),
+          });
+        }
       } catch {}
     };
 
@@ -190,7 +232,7 @@ export default function Player() {
 
   if (!currentTrack) {
     return (
-      <footer className="h-14 md:h-20 bg-[#181818] border-t border-[#282828] flex items-center justify-center mb-[52px] md:mb-0">
+      <footer className="h-14 md:h-20 bg-[#181818] border-t border-[#282828] flex items-center justify-center mb-[60px] md:mb-0">
         <p className="text-[#b3b3b3] text-xs md:text-sm">
           Select a song to start playing
         </p>
@@ -201,7 +243,7 @@ export default function Player() {
   return (
     <>
       {/* Mobile */}
-      <footer className="md:hidden flex flex-col bg-[#181818] border-t border-[#282828] mb-[52px]">
+      <footer className="md:hidden flex flex-col bg-[#181818] border-t border-[#282828] mb-[60px]">
         <div className="flex items-center px-3 py-2 gap-3">
           <div className="relative w-10 h-10 rounded overflow-hidden shrink-0">
             {currentTrack.thumbnail ? (

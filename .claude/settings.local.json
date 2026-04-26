@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack --use-npm)",
+      "Bash(npm install *)",
+      "Bash(npx next *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); console.log\\(j.results.length+' results:'\\); j.results.slice\\(0,8\\).forEach\\(t=>console.log\\(' ',t.title.substring\\(0,75\\),'|',t.channelName\\)\\)\")",
+      "Bash(curl -s -o /tmp/deezer1_body.txt -w \"%{http_code}\" --max-time 8 \"https://api.deezer.com/search/album?q=aasa%20kooda\")",
+      "Read(//tmp/**)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d['data'][0], indent=2\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d['data'][0], indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); console.log\\('Albums:', j.resultCount\\); j.results.forEach\\(a => console.log\\(' ', a.collectionId, '|', a.collectionName, '|', a.artistName, '|', a.trackCount, 'tracks |', a.artworkUrl100\\)\\)\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); console.log\\('Artists:', j.resultCount\\); j.results.forEach\\(a => console.log\\(' ', a.artistId, '|', a.artistName, '|', a.primaryGenreName\\)\\)\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); console.log\\('Movie search:', j.resultCount\\); j.results.forEach\\(a => console.log\\(' ', a.collectionId, '|', a.collectionName, '|', a.artistName, '|', a.trackCount, 'tracks'\\)\\)\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); j.results.forEach\\(\\(r,i\\) => { if\\(r.wrapperType==='track'\\) console.log\\(r.trackNumber, '|', r.trackName, '|', r.artistName, '|', Math.floor\\(r.trackTimeMillis/1000\\)+'s', '|', r.artworkUrl100\\) }\\)\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const j=JSON.parse\\(d\\); j.results.forEach\\(\\(r,i\\) => { if\\(r.wrapperType==='collection'\\) console.log\\(r.collectionId, '|', r.collectionName, '|', r.trackCount, 'tracks |', r.releaseDate?.substring\\(0,10\\)\\) }\\)\")",
+      "Bash(npx tsx -e ' *)",
+      "Bash(npx tsx *)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); console.log\\('Total:', j.results?.length\\); j.results?.slice\\(0,15\\).forEach\\(\\(r,i\\) => console.log\\(i+1, r.title\\)\\)\")",
+      "Bash(node -e \"const j=JSON.parse\\(require\\('fs'\\).readFileSync\\('/tmp/related_result.json','utf8'\\)\\); console.log\\('Total:', j.results?.length\\); \\(j.results||[]\\).slice\\(0,15\\).forEach\\(\\(r,i\\) => console.log\\(i+1, r.title\\)\\)\")",
+      "WebFetch(domain:21st.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:www.google.com)",
+      "Bash(pkill -f \"next dev\")",
+      "WebFetch(domain:fonts.google.com)",
+      "WebFetch(domain:lucide.dev)",
+      "WebFetch(domain:phosphoricons.com)",
+      "WebFetch(domain:heroicons.com)",
+      "Bash(node -e \"const YouTube = require\\('youtube-sr'\\).default; YouTube.search\\('pop hits 2025 music', { limit: 5, type: 'video' }\\).then\\(r => console.log\\(JSON.stringify\\(r.length\\)\\)\\).catch\\(e => console.error\\('ERROR:', e.message\\)\\)\")",
+      "Bash(taskkill //F //IM node.exe)"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "echora",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "better-sqlite3": "^12.9.0",
+    "lucide-react": "^1.11.0",
+    "next": "^16.2.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.4",
+    "uuid": "^14.0.0",
+    "youtube-sr": "^4.3.12",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^6.0.3"
+  }
+}

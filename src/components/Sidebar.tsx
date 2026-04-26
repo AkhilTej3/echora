@@ -45,7 +45,7 @@ export default function Sidebar() {
 
   return (
     <aside className="w-[280px] bg-black flex flex-col h-full shrink-0">
-      <div className="px-6 py-5">
+      <div className="px-6 py-5 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
           <Image
             src="/logo.png"
@@ -58,6 +58,7 @@ export default function Sidebar() {
             Echora
           </span>
         </Link>
+        <UserMenu />
       </div>
 
       <nav className="px-3 space-y-0.5">
@@ -146,11 +147,10 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <div className="px-6 py-3 flex items-center justify-between">
+      <div className="px-6 py-3">
         <span className="text-[10px] text-[#b3b3b3]/50 tracking-widest uppercase">
           Feel every frequency
         </span>
-        <UserMenu />
       </div>
     </aside>
   );

@@ -14,20 +14,14 @@ import {
 } from "lucide-react";
 import QueueSheet from "./QueueSheet";
 
-declare global {
-  interface Window {
-    YT: typeof YT;
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
-
 export default function Player() {
   const { currentTrack, isPlaying, pause, resume, playNext } =
     usePlayerStore();
 
-  const playerRef = useRef<YT.Player | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastVideoRef = useRef<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const barRef = useRef<HTMLDivElement>(null);
   const barFillRef = useRef<HTMLDivElement>(null);
   const barThumbRef = useRef<HTMLDivElement>(null);
@@ -38,90 +32,64 @@ export default function Player() {
   const mobileDurRef = useRef<HTMLSpanElement>(null);
   const progressData = useRef({ progress: 0, duration: 0 });
 
-  const [apiReady, setApiReady] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
   const [volume, setVolume] = useState(80);
   const [showQueue, setShowQueue] = useState(false);
-  const [, forceRender] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const playNextRef = useRef(playNext);
   playNextRef.current = playNext;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
 
+  // Create audio element once
   useEffect(() => {
-    if (window.YT?.Player) {
-      setApiReady(true);
-      return;
-    }
-    const exists = document.querySelector(
-      'script[src="https://www.youtube.com/iframe_api"]'
-    );
-    if (!exists) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(tag);
-    }
-    window.onYouTubeIframeAPIReady = () => setApiReady(true);
+    const audio = new Audio();
+    audio.volume = 0.8;
+    audio.addEventListener("ended", () => playNextRef.current());
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
   }, []);
 
+  // Load new track
   useEffect(() => {
-    if (!apiReady || playerRef.current) return;
-
-    const host = document.createElement("div");
-    host.style.cssText =
-      "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden";
-    document.body.appendChild(host);
-
-    playerRef.current = new window.YT.Player(host, {
-      height: "1",
-      width: "1",
-      playerVars: {
-        autoplay: 0,
-        controls: 0,
-        disablekb: 1,
-        fs: 0,
-        modestbranding: 1,
-        rel: 0,
-        showinfo: 0,
-        origin: window.location.origin,
-      },
-      events: {
-        onReady: () => {
-          setPlayerReady(true);
-          playerRef.current?.setVolume(80);
-        },
-        onStateChange: (e: YT.OnStateChangeEvent) => {
-          if (e.data === YT.PlayerState.ENDED) {
-            playNextRef.current();
-          }
-        },
-      },
-    });
-  }, [apiReady]);
-
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!playerReady || !p || !currentTrack) return;
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
     if (lastVideoRef.current === currentTrack.videoId) return;
 
     lastVideoRef.current = currentTrack.videoId;
     progressData.current = { progress: 0, duration: 0 };
     updateBarDOM(0, 0);
+    setLoading(true);
 
-    try {
-      p.loadVideoById(currentTrack.videoId);
-    } catch {}
-  }, [currentTrack, playerReady]);
+    fetch(`/api/stream?v=${currentTrack.videoId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.url && lastVideoRef.current === currentTrack.videoId) {
+          audio.src = data.url;
+          audio.play().catch(() => {});
+          setLoading(false);
+        }
+      })
+      .catch(() => setLoading(false));
+  }, [currentTrack]);
 
+  // Sync play/pause
   useEffect(() => {
-    const p = playerRef.current;
-    if (!playerReady || !p) return;
-    try {
-      if (isPlaying) p.playVideo();
-      else p.pauseVideo();
-    } catch {}
-  }, [isPlaying, playerReady]);
+    const audio = audioRef.current;
+    if (!audio || !audio.src) return;
+    if (isPlaying) audio.play().catch(() => {});
+    else audio.pause();
+  }, [isPlaying]);
 
-  // Media Session API for background playback & lock screen controls
+  // Volume sync
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume / 100;
+  }, [volume]);
+
+  // Media Session API
   useEffect(() => {
     if (!currentTrack || !("mediaSession" in navigator)) return;
 
@@ -131,7 +99,6 @@ export default function Player() {
       artwork: currentTrack.thumbnail
         ? [
             { src: currentTrack.thumbnail, sizes: "96x96", type: "image/jpeg" },
-            { src: currentTrack.thumbnail, sizes: "128x128", type: "image/jpeg" },
             { src: currentTrack.thumbnail, sizes: "256x256", type: "image/jpeg" },
             { src: currentTrack.thumbnail, sizes: "512x512", type: "image/jpeg" },
           ]
@@ -143,19 +110,19 @@ export default function Player() {
     navigator.mediaSession.setActionHandler("nexttrack", () => playNextRef.current());
     navigator.mediaSession.setActionHandler("previoustrack", null);
     navigator.mediaSession.setActionHandler("seekto", (details) => {
-      if (details.seekTime != null) {
-        progressData.current.progress = details.seekTime;
-        updateBarDOM(details.seekTime, progressData.current.duration);
-        try { playerRef.current?.seekTo(details.seekTime, true); } catch {}
+      if (details.seekTime != null && audioRef.current) {
+        audioRef.current.currentTime = details.seekTime;
       }
     });
   }, [currentTrack, pause, resume]);
 
   useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    }
   }, [isPlaying]);
 
+  // Progress polling
   function updateBarDOM(t: number, d: number) {
     const pct = d > 0 ? Math.min((t / d) * 100, 100) : 0;
     if (barFillRef.current) barFillRef.current.style.width = `${pct}%`;
@@ -172,26 +139,24 @@ export default function Player() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    if (!isPlaying || !playerReady) return;
+    if (!isPlaying) return;
 
     const poll = () => {
-      const p = playerRef.current;
-      if (!p) return;
-      try {
-        const t = p.getCurrentTime?.();
-        const d = p.getDuration?.();
-        const time = typeof t === "number" ? t : 0;
-        const dur = typeof d === "number" && d > 0 ? d : progressData.current.duration;
-        progressData.current = { progress: time, duration: dur };
-        updateBarDOM(time, dur);
-        if ("mediaSession" in navigator && dur > 0) {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const t = audio.currentTime || 0;
+      const d = audio.duration || 0;
+      if (isFinite(d) && d > 0) {
+        progressData.current = { progress: t, duration: d };
+        updateBarDOM(t, d);
+        if ("mediaSession" in navigator) {
           navigator.mediaSession.setPositionState({
-            duration: dur,
+            duration: d,
             playbackRate: 1,
-            position: Math.min(time, dur),
+            position: Math.min(t, d),
           });
         }
-      } catch {}
+      }
     };
 
     poll();
@@ -203,25 +168,20 @@ export default function Player() {
         intervalRef.current = null;
       }
     };
-  }, [isPlaying, playerReady, currentTrack]);
+  }, [isPlaying, currentTrack]);
 
   function seekFromBar(clientX: number, bar: HTMLDivElement | null) {
-    if (!bar || progressData.current.duration <= 0) return;
+    if (!bar || !audioRef.current || progressData.current.duration <= 0) return;
     const rect = bar.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const val = x * progressData.current.duration;
+    audioRef.current.currentTime = val;
     progressData.current.progress = val;
     updateBarDOM(val, progressData.current.duration);
-    try {
-      playerRef.current?.seekTo(val, true);
-    } catch {}
   }
 
   function handleVolume(val: number) {
     setVolume(val);
-    try {
-      playerRef.current?.setVolume(val);
-    } catch {}
   }
 
   function fmt(s: number) {
@@ -277,9 +237,12 @@ export default function Player() {
           </button>
           <button
             onClick={isPlaying ? pause : resume}
+            disabled={loading}
             className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0"
           >
-            {isPlaying ? (
+            {loading ? (
+              <div className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            ) : isPlaying ? (
               <Pause size={14} fill="black" color="black" />
             ) : (
               <Play size={14} fill="black" color="black" className="ml-0.5" />
@@ -347,9 +310,12 @@ export default function Player() {
             </button>
             <button
               onClick={isPlaying ? pause : resume}
+              disabled={loading}
               className="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform"
             >
-              {isPlaying ? (
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : isPlaying ? (
                 <Pause size={16} fill="black" color="black" />
               ) : (
                 <Play size={16} fill="black" color="black" className="ml-0.5" />

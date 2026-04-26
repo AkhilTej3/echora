@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/postcss": "^4.2.4",

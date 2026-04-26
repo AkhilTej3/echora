@@ -1,30 +1,20 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, use } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePlayerStore, Track } from "@/store/usePlayerStore";
 import { Play, Loader2, MoreHorizontal } from "lucide-react";
 
 interface AlbumData {
-  id: number;
+  id: string;
   name: string;
-  artistName: string;
-  artistId: number;
+  artist: string;
+  artistId: string;
   artwork: string;
-  trackCount: number;
-  releaseDate: string;
-  genre: string;
-  type: string;
-}
-
-interface AlbumTrack {
-  id: number;
-  trackNumber: number;
-  name: string;
-  artistName: string;
-  duration: number;
-  artwork: string;
+  year: string;
+  songCount: string;
+  tracks: Track[];
 }
 
 export default function AlbumPage({
@@ -34,15 +24,10 @@ export default function AlbumPage({
 }) {
   const { id } = use(params);
   const [album, setAlbum] = useState<AlbumData | null>(null);
-  const [tracks, setTracks] = useState<AlbumTrack[]>([]);
   const [loading, setLoading] = useState(true);
-  const [resolving, setResolving] = useState<number | null>(null);
-  const [resolvingAll, setResolvingAll] = useState(false);
-  const [menuTrackId, setMenuTrackId] = useState<number | null>(null);
+  const [menuTrackId, setMenuTrackId] = useState<string | null>(null);
   const [playlists, setPlaylists] = useState<{ id: string; name: string }[]>([]);
   const { playWithQueue, addToQueue, currentTrack } = usePlayerStore();
-
-  const resolvedCache = useRef<Map<number, Track>>(new Map());
 
   useEffect(() => {
     function handleClick() { setMenuTrackId(null); }
@@ -54,100 +39,38 @@ export default function AlbumPage({
     fetch(`/api/albums/${id}`)
       .then((r) => r.json())
       .then((data) => {
-        setAlbum(data.album);
-        setTracks(data.tracks || []);
+        setAlbum(data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
 
-  async function resolveTrack(
-    track: AlbumTrack,
-    albumArt: string
-  ): Promise<Track | null> {
-    const cached = resolvedCache.current.get(track.id);
-    if (cached) return cached;
-
-    try {
-      const res = await fetch(
-        `/api/resolve?track=${encodeURIComponent(track.name)}&artist=${encodeURIComponent(track.artistName)}`
-      );
-      const yt = await res.json();
-      if (yt.videoId) {
-        const t: Track = {
-          videoId: yt.videoId,
-          title: `${track.name} - ${track.artistName}`,
-          thumbnail: albumArt || track.artwork,
-          channelName: track.artistName,
-          duration: yt.duration,
-        };
-        resolvedCache.current.set(track.id, t);
-        return t;
-      }
-    } catch {}
-    return null;
-  }
-
-  async function resolveMany(
-    albumTracks: AlbumTrack[],
-    albumArt: string
-  ): Promise<Track[]> {
-    const results = await Promise.all(
-      albumTracks.map((t) => resolveTrack(t, albumArt))
-    );
-    return results.filter((t): t is Track => t !== null);
-  }
-
-  async function playFromTrack(startIndex: number) {
+  function playFromTrack(startIndex: number) {
     if (!album) return;
-    const clickedTrack = tracks[startIndex];
+    const tracks = album.tracks;
+    const clicked = tracks[startIndex];
     const remaining = tracks.slice(startIndex + 1);
-
-    setResolving(clickedTrack.id);
-
-    const [first, rest] = await Promise.all([
-      resolveTrack(clickedTrack, album.artwork),
-      resolveMany(remaining, album.artwork),
-    ]);
-
-    setResolving(null);
-
-    if (first) {
-      playWithQueue(first, rest);
-    }
+    playWithQueue(clicked, remaining);
   }
 
-  async function playAll() {
-    if (tracks.length === 0 || !album) return;
-    setResolvingAll(true);
-
-    const [first, rest] = await Promise.all([
-      resolveTrack(tracks[0], album.artwork),
-      resolveMany(tracks.slice(1), album.artwork),
-    ]);
-
-    setResolvingAll(false);
-
-    if (first) {
-      playWithQueue(first, rest);
-    }
-  }
-
-  function formatDuration(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
+  function playAll() {
+    if (!album || album.tracks.length === 0) return;
+    playWithQueue(album.tracks[0], album.tracks.slice(1));
   }
 
   function totalDuration() {
-    const total = tracks.reduce((sum, t) => sum + t.duration, 0);
+    if (!album) return "";
+    const total = album.tracks.reduce((sum, t) => {
+      const parts = t.duration.split(":");
+      return sum + (parseInt(parts[0]) * 60 + parseInt(parts[1] || "0"));
+    }, 0);
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
     if (h > 0) return `${h} hr ${m} min`;
     return `${m} min`;
   }
 
-  async function openTrackMenu(trackId: number) {
+  async function openTrackMenu(trackId: string) {
     setMenuTrackId(menuTrackId === trackId ? null : trackId);
     if (menuTrackId !== trackId) {
       const res = await fetch("/api/playlists");
@@ -158,15 +81,12 @@ export default function AlbumPage({
 
   async function addTrackToPlaylist(trackIndex: number, playlistId: string) {
     if (!album) return;
-    const t = tracks[trackIndex];
-    const resolved = await resolveTrack(t, album.artwork);
-    if (resolved) {
-      await fetch("/api/playlists", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistId, track: resolved }),
-      });
-    }
+    const track = album.tracks[trackIndex];
+    await fetch("/api/playlists", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlistId, track }),
+    });
     setMenuTrackId(null);
   }
 
@@ -174,23 +94,12 @@ export default function AlbumPage({
     if (!album) return;
     const name = prompt("Playlist name:");
     if (!name) return;
-    const t = tracks[trackIndex];
-    const resolved = await resolveTrack(t, album.artwork);
-    if (resolved) {
-      await fetch("/api/playlists", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, track: resolved }),
-      });
-    }
-    setMenuTrackId(null);
-  }
-
-  async function addTrackToQueue(trackIndex: number) {
-    if (!album) return;
-    const t = tracks[trackIndex];
-    const resolved = await resolveTrack(t, album.artwork);
-    if (resolved) addToQueue(resolved);
+    const track = album.tracks[trackIndex];
+    await fetch("/api/playlists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, track }),
+    });
     setMenuTrackId(null);
   }
 
@@ -223,25 +132,29 @@ export default function AlbumPage({
         </div>
         <div className="flex flex-col justify-end min-w-0 text-center sm:text-left">
           <p className="text-[10px] sm:text-xs font-medium text-[#b3b3b3] uppercase tracking-wider mb-1">
-            {album.type}
+            Album
           </p>
           <h1 className="text-2xl sm:text-4xl font-bold text-white mb-2 sm:mb-3 leading-tight">
             {album.name}
           </h1>
           <div className="flex items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm text-[#b3b3b3] flex-wrap">
-            <Link
-              href={`/artist/${album.artistId}`}
-              className="font-semibold hover:underline text-white"
-            >
-              {album.artistName}
-            </Link>
-            <span className="text-[#b3b3b3]/70">•</span>
-            <span>{album.releaseDate.substring(0, 4)}</span>
-            <span className="text-[#b3b3b3]/70">•</span>
+            {album.artistId ? (
+              <Link
+                href={`/artist/${album.artistId}`}
+                className="font-semibold hover:underline text-white"
+              >
+                {album.artist}
+              </Link>
+            ) : (
+              <span className="font-semibold text-white">{album.artist}</span>
+            )}
+            <span className="text-[#b3b3b3]/70">&bull;</span>
+            <span>{album.year}</span>
+            <span className="text-[#b3b3b3]/70">&bull;</span>
             <span>
-              {album.trackCount} song{album.trackCount !== 1 && "s"}
+              {album.songCount} song{album.songCount !== "1" && "s"}
             </span>
-            <span className="text-[#b3b3b3]/70 hidden sm:inline">•</span>
+            <span className="text-[#b3b3b3]/70 hidden sm:inline">&bull;</span>
             <span className="text-[#b3b3b3] hidden sm:inline">{totalDuration()}</span>
           </div>
         </div>
@@ -250,14 +163,9 @@ export default function AlbumPage({
       <div className="flex items-center justify-center sm:justify-start gap-4 mb-6">
         <button
           onClick={playAll}
-          disabled={resolvingAll}
-          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1DB954] flex items-center justify-center hover:scale-105 transition-all shadow-lg disabled:opacity-60"
+          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#1DB954] flex items-center justify-center hover:scale-105 transition-all shadow-lg"
         >
-          {resolvingAll ? (
-            <Loader2 size={22} className="animate-spin text-white" />
-          ) : (
-            <Play size={22} fill="black" color="black" />
-          )}
+          <Play size={22} fill="black" color="black" />
         </button>
       </div>
 
@@ -267,15 +175,13 @@ export default function AlbumPage({
         <span className="w-20 text-right">Duration</span>
       </div>
 
-      {tracks.map((track, index) => {
-        const isActive =
-          currentTrack?.title === `${track.name} - ${track.artistName}`;
-        const isLoading = resolving === track.id;
+      {album.tracks.map((track, index) => {
+        const isActive = currentTrack?.videoId === track.videoId;
 
         return (
           <div
-            key={track.id}
-            onClick={() => !isLoading && !resolvingAll && playFromTrack(index)}
+            key={track.videoId}
+            onClick={() => playFromTrack(index)}
             className={`group flex items-center px-4 py-2.5 rounded-md cursor-pointer transition-colors ${
               isActive ? "bg-[#282828]/80" : "hover:bg-white/5"
             }`}
@@ -285,18 +191,10 @@ export default function AlbumPage({
                 isActive ? "text-[#1DB954]" : "text-[#b3b3b3]"
               }`}
             >
-              {isLoading ? (
-                <Loader2 size={14} className="animate-spin text-[#1DB954]" />
-              ) : (
-                <span className="group-hover:hidden">
-                  {track.trackNumber}
-                </span>
-              )}
-              {!isLoading && (
-                <span className="hidden group-hover:inline text-white">
-                  <Play size={14} fill="white" color="white" />
-                </span>
-              )}
+              <span className="group-hover:hidden">{index + 1}</span>
+              <span className="hidden group-hover:inline text-white">
+                <Play size={14} fill="white" color="white" />
+              </span>
             </span>
 
             <div className="flex-1 ml-4 min-w-0">
@@ -305,35 +203,38 @@ export default function AlbumPage({
                   isActive ? "text-[#1DB954]" : "text-white"
                 }`}
               >
-                {track.name}
+                {track.title}
               </p>
               <p className="text-xs text-[#b3b3b3] truncate">
-                {track.artistName}
+                {track.channelName}
               </p>
             </div>
 
             <span className="w-16 text-right text-sm text-[#b3b3b3] tabular-nums">
-              {formatDuration(track.duration)}
+              {track.duration}
             </span>
 
             <div className="relative w-8 flex justify-center">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  openTrackMenu(track.id);
+                  openTrackMenu(track.videoId);
                 }}
                 className="opacity-0 group-hover:opacity-100 text-[#b3b3b3] hover:text-white p-1 transition-opacity"
               >
                 <MoreHorizontal size={16} />
               </button>
 
-              {menuTrackId === track.id && (
+              {menuTrackId === track.videoId && (
                 <div
                   className="absolute right-0 top-8 z-50 w-52 bg-[#282828] rounded-lg shadow-xl py-1"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
-                    onClick={() => addTrackToQueue(index)}
+                    onClick={() => {
+                      addToQueue(track);
+                      setMenuTrackId(null);
+                    }}
                     className="w-full text-left px-3 py-2 text-sm text-white/80 hover:bg-white/10"
                   >
                     Add to queue

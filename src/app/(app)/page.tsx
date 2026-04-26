@@ -4,37 +4,30 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Track, usePlayerStore } from "@/store/usePlayerStore";
-import { Play, Music, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-
-interface HomeSong {
-  id: number;
-  name: string;
-  artistName: string;
-  artwork: string;
-  duration: number;
-  albumId: number;
-}
+import { Play, Music, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface HomeAlbum {
-  id: number;
+  id: string;
   name: string;
-  artistName: string;
-  artistId: number;
+  artist: string;
   artwork: string;
-  trackCount: number;
-  releaseDate: string;
-  genre: string;
+  year: string;
+  songCount: string;
 }
 
 interface HomeData {
-  trending: HomeSong[];
+  trending: Track[];
   newReleases: HomeAlbum[];
+  telugu: HomeAlbum[];
+  hindi: HomeAlbum[];
+  english: HomeAlbum[];
+  punjabi: HomeAlbum[];
   bollywood: HomeAlbum[];
   tamil: HomeAlbum[];
   kpop: HomeAlbum[];
-  chill: HomeSong[];
-  workout: HomeSong[];
-  romance: HomeSong[];
+  chill: Track[];
+  workout: Track[];
+  romance: Track[];
 }
 
 const MOOD_CARDS = [
@@ -67,11 +60,10 @@ function getGreeting(): string {
 }
 
 export default function HomePage() {
-  const { recentlyPlayed, setRecentlyPlayed, play, addToQueue, currentTrack } =
+  const { recentlyPlayed, setRecentlyPlayed, play, currentTrack } =
     usePlayerStore();
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [resolving, setResolving] = useState<number | null>(null);
   const [genreResults, setGenreResults] = useState<Record<string, Track[]>>({});
   const [loadingGenre, setLoadingGenre] = useState<string | null>(null);
 
@@ -101,32 +93,12 @@ export default function HomePage() {
       .catch(() => {});
   }, [setRecentlyPlayed]);
 
-  async function playSong(song: HomeSong) {
-    setResolving(song.id);
-    try {
-      const res = await fetch(
-        `/api/resolve?track=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artistName)}`
-      );
-      const yt = await res.json();
-      if (yt.videoId) {
-        play({
-          videoId: yt.videoId,
-          title: `${song.name} - ${song.artistName}`,
-          thumbnail: song.artwork,
-          channelName: song.artistName,
-          duration: yt.duration,
-        });
-      }
-    } catch {}
-    setResolving(null);
-  }
-
   async function loadGenre(label: string, query: string) {
     if (genreResults[label]?.length) return;
     setLoadingGenre(label);
     try {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query)}&type=youtube`
+        `/api/search?q=${encodeURIComponent(query)}&type=songs`
       );
       if (!res.ok) throw new Error("Search failed");
       const d = await res.json();
@@ -136,12 +108,6 @@ export default function HomePage() {
       }
     } catch {}
     setLoadingGenre(null);
-  }
-
-  function formatDuration(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
   return (
@@ -181,15 +147,13 @@ export default function HomePage() {
           <section className="animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
             <SectionHeader title="Trending now" subtitle="Popular songs right now" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-              {data.trending.slice(0, 10).map((song, i) => (
+              {data.trending.slice(0, 10).map((track, i) => (
                 <SongRow
-                  key={song.id}
-                  song={song}
+                  key={track.videoId}
+                  track={track}
                   index={i + 1}
-                  isResolving={resolving === song.id}
-                  isActive={false}
-                  onClick={() => playSong(song)}
-                  formatDuration={formatDuration}
+                  isActive={currentTrack?.videoId === track.videoId}
+                  onClick={() => play(track)}
                 />
               ))}
             </div>
@@ -228,7 +192,7 @@ export default function HomePage() {
                   )}
                 </div>
                 <span className="text-sm font-semibold text-white truncate pr-3">
-                  {track.title.split(/[-–—]/)[0].trim()}
+                  {track.title.split(/[-\u2013\u2014]/)[0].trim()}
                 </span>
                 <div className="ml-auto mr-3 w-8 h-8 rounded-full bg-[#1DB954] items-center justify-center shadow-lg shadow-black/40 opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0 hidden group-hover:flex shrink-0">
                   <Play size={14} fill="black" color="black" />
@@ -256,18 +220,50 @@ export default function HomePage() {
         data.chill.length > 0 && (
           <section className="animate-fade-in-up" style={{ animationDelay: "0.25s" }}>
             <SectionHeader title="Chill vibes" subtitle="Relax and unwind" />
-            <SongCardScroll
-              songs={data.chill}
-              resolving={resolving}
-              onPlay={playSong}
-            />
+            <SongCardScroll songs={data.chill} onPlay={play} />
+          </section>
+        )}
+
+      {!loading &&
+        data?.telugu &&
+        data.telugu.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.28s" }}>
+            <SectionHeader title="Telugu" subtitle="Tollywood hits & more" />
+            <AlbumScroll albums={data.telugu} />
+          </section>
+        )}
+
+      {!loading &&
+        data?.hindi &&
+        data.hindi.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.31s" }}>
+            <SectionHeader title="Hindi" subtitle="Bollywood & indie Hindi" />
+            <AlbumScroll albums={data.hindi} />
+          </section>
+        )}
+
+      {!loading &&
+        data?.english &&
+        data.english.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.34s" }}>
+            <SectionHeader title="English" subtitle="Pop, rock & global hits" />
+            <AlbumScroll albums={data.english} />
+          </section>
+        )}
+
+      {!loading &&
+        data?.punjabi &&
+        data.punjabi.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.37s" }}>
+            <SectionHeader title="Punjabi" subtitle="Bhangra & Punjabi pop" />
+            <AlbumScroll albums={data.punjabi} />
           </section>
         )}
 
       {!loading &&
         data?.bollywood &&
         data.bollywood.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
             <SectionHeader title="Bollywood" subtitle="Hindi hits & soundtracks" />
             <AlbumScroll albums={data.bollywood} />
           </section>
@@ -276,7 +272,7 @@ export default function HomePage() {
       {!loading &&
         data?.tamil &&
         data.tamil.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.35s" }}>
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.43s" }}>
             <SectionHeader title="Tamil" subtitle="Kollywood & indie Tamil" />
             <AlbumScroll albums={data.tamil} />
           </section>
@@ -285,20 +281,16 @@ export default function HomePage() {
       {!loading &&
         data?.workout &&
         data.workout.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.46s" }}>
             <SectionHeader title="Workout energy" subtitle="Pump up the intensity" />
-            <SongCardScroll
-              songs={data.workout}
-              resolving={resolving}
-              onPlay={playSong}
-            />
+            <SongCardScroll songs={data.workout} onPlay={play} />
           </section>
         )}
 
       {!loading &&
         data?.kpop &&
         data.kpop.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.45s" }}>
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.49s" }}>
             <SectionHeader title="K-Pop" subtitle="Korean pop & idol hits" />
             <AlbumScroll albums={data.kpop} />
           </section>
@@ -307,13 +299,9 @@ export default function HomePage() {
       {!loading &&
         data?.romance &&
         data.romance.length > 0 && (
-          <section className="animate-fade-in-up" style={{ animationDelay: "0.5s" }}>
+          <section className="animate-fade-in-up" style={{ animationDelay: "0.52s" }}>
             <SectionHeader title="Romantic" subtitle="Love songs & ballads" />
-            <SongCardScroll
-              songs={data.romance}
-              resolving={resolving}
-              onPlay={playSong}
-            />
+            <SongCardScroll songs={data.romance} onPlay={play} />
           </section>
         )}
 
@@ -442,7 +430,7 @@ function AlbumScroll({ albums }: { albums: HomeAlbum[] }) {
             <p className="text-sm font-medium text-white truncate">
               {album.name}
             </p>
-            <p className="text-xs text-[#b3b3b3] truncate">{album.artistName}</p>
+            <p className="text-xs text-[#b3b3b3] truncate">{album.artist}</p>
           </Link>
         ))}
       </div>
@@ -485,12 +473,10 @@ function ScrollButtons({
 
 function SongCardScroll({
   songs,
-  resolving,
   onPlay,
 }: {
-  songs: HomeSong[];
-  resolving: number | null;
-  onPlay: (song: HomeSong) => void;
+  songs: Track[];
+  onPlay: (track: Track) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -500,36 +486,32 @@ function SongCardScroll({
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto hide-scrollbar pb-2 scroll-smooth"
       >
-        {songs.map((song) => (
+        {songs.map((track) => (
           <div
-            key={song.id}
-            onClick={() => onPlay(song)}
+            key={track.videoId}
+            onClick={() => onPlay(track)}
             className="shrink-0 w-[160px] group cursor-pointer"
           >
             <div className="relative w-[160px] h-[160px] rounded-lg overflow-hidden shadow-lg mb-2 bg-[#282828]">
-              <Image
-                src={song.artwork}
-                alt={song.name}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-300"
-                sizes="160px"
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-              {resolving === song.id ? (
-                <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl">
-                  <Loader2 size={18} className="animate-spin text-black" />
-                </div>
-              ) : (
-                <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#1DB954] items-center justify-center shadow-xl shadow-black/30 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 hidden group-hover:flex">
-                  <Play size={18} fill="black" color="black" />
-                </div>
+              {track.thumbnail && (
+                <Image
+                  src={track.thumbnail}
+                  alt={track.title}
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-300"
+                  sizes="160px"
+                  unoptimized
+                />
               )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+              <div className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-[#1DB954] items-center justify-center shadow-xl shadow-black/30 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 hidden group-hover:flex">
+                <Play size={18} fill="black" color="black" />
+              </div>
             </div>
             <p className="text-sm font-medium text-white truncate">
-              {song.name}
+              {track.title}
             </p>
-            <p className="text-xs text-[#b3b3b3] truncate">{song.artistName}</p>
+            <p className="text-xs text-[#b3b3b3] truncate">{track.channelName}</p>
           </div>
         ))}
       </div>
@@ -539,19 +521,15 @@ function SongCardScroll({
 }
 
 function SongRow({
-  song,
+  track,
   index,
-  isResolving,
   isActive,
   onClick,
-  formatDuration,
 }: {
-  song: HomeSong;
+  track: Track;
   index: number;
-  isResolving: boolean;
   isActive: boolean;
   onClick: () => void;
-  formatDuration: (s: number) => string;
 }) {
   return (
     <div
@@ -561,33 +539,29 @@ function SongRow({
       }`}
     >
       <span className="w-6 text-center text-sm text-[#b3b3b3]/70 tabular-nums shrink-0">
-        {isResolving ? (
-          <Loader2 size={14} className="animate-spin text-[#1DB954]" />
-        ) : (
-          <>
-            <span className="group-hover:hidden">{index}</span>
-            <span className="hidden group-hover:inline text-white"><Play size={14} fill="white" /></span>
-          </>
-        )}
+        <span className="group-hover:hidden">{index}</span>
+        <span className="hidden group-hover:inline text-white"><Play size={14} fill="white" /></span>
       </span>
       <div className="relative w-10 h-10 rounded overflow-hidden shrink-0">
-        <Image
-          src={song.artwork}
-          alt={song.name}
-          fill
-          className="object-cover"
-          sizes="40px"
-          unoptimized
-        />
+        {track.thumbnail && (
+          <Image
+            src={track.thumbnail}
+            alt={track.title}
+            fill
+            className="object-cover"
+            sizes="40px"
+            unoptimized
+          />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className={`text-sm font-medium truncate ${isActive ? "text-[#1DB954]" : "text-white"}`}>
-          {song.name}
+          {track.title}
         </p>
-        <p className="text-xs text-[#b3b3b3] truncate">{song.artistName}</p>
+        <p className="text-xs text-[#b3b3b3] truncate">{track.channelName}</p>
       </div>
       <span className="text-xs text-[#b3b3b3]/70 tabular-nums shrink-0">
-        {formatDuration(song.duration)}
+        {track.duration}
       </span>
     </div>
   );

@@ -19,8 +19,9 @@ export default function Player() {
     usePlayerStore();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const lastVideoRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTrackRef = useRef<string | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const barRef = useRef<HTMLDivElement>(null);
   const barFillRef = useRef<HTMLDivElement>(null);
@@ -34,60 +35,68 @@ export default function Player() {
 
   const [volume, setVolume] = useState(80);
   const [showQueue, setShowQueue] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const playNextRef = useRef(playNext);
   playNextRef.current = playNext;
-  const isPlayingRef = useRef(isPlaying);
-  isPlayingRef.current = isPlaying;
 
-  // Create audio element once
   useEffect(() => {
     const audio = new Audio();
+    audio.preload = "auto";
     audio.volume = 0.8;
-    audio.addEventListener("ended", () => playNextRef.current());
     audioRef.current = audio;
+
+    audio.addEventListener("ended", () => {
+      playNextRef.current();
+    });
+
     return () => {
       audio.pause();
       audio.src = "";
+      audio.removeAttribute("src");
     };
   }, []);
 
-  // Load new track
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
-    if (lastVideoRef.current === currentTrack.videoId) return;
+    if (lastTrackRef.current === currentTrack.videoId) return;
 
-    lastVideoRef.current = currentTrack.videoId;
+    lastTrackRef.current = currentTrack.videoId;
     progressData.current = { progress: 0, duration: 0 };
     updateBarDOM(0, 0);
-    setLoading(true);
 
-    fetch(`/api/stream?v=${currentTrack.videoId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.url && lastVideoRef.current === currentTrack.videoId) {
-          audio.src = data.url;
-          audio.play().catch(() => {});
-          setLoading(false);
-        }
-      })
-      .catch(() => setLoading(false));
+    if (currentTrack.streamUrl) {
+      audio.src = currentTrack.streamUrl;
+      audio.play().catch(() => {});
+    }
   }, [currentTrack]);
 
-  // Sync play/pause
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !audio.src) return;
-    if (isPlaying) audio.play().catch(() => {});
-    else audio.pause();
+    if (!audio) return;
+    if (isPlaying) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
   }, [isPlaying]);
 
-  // Volume sync
+  // Wake Lock for background playback
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume / 100;
-  }, [volume]);
+    if (isPlaying) {
+      if ("wakeLock" in navigator) {
+        navigator.wakeLock
+          .request("screen")
+          .then((lock) => {
+            wakeLockRef.current = lock;
+          })
+          .catch(() => {});
+      }
+    } else {
+      wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
+  }, [isPlaying]);
 
   // Media Session API
   useEffect(() => {
@@ -109,11 +118,6 @@ export default function Player() {
     navigator.mediaSession.setActionHandler("pause", () => pause());
     navigator.mediaSession.setActionHandler("nexttrack", () => playNextRef.current());
     navigator.mediaSession.setActionHandler("previoustrack", null);
-    navigator.mediaSession.setActionHandler("seekto", (details) => {
-      if (details.seekTime != null && audioRef.current) {
-        audioRef.current.currentTime = details.seekTime;
-      }
-    });
   }, [currentTrack, pause, resume]);
 
   useEffect(() => {
@@ -122,11 +126,11 @@ export default function Player() {
     }
   }, [isPlaying]);
 
-  // Progress polling
   function updateBarDOM(t: number, d: number) {
     const pct = d > 0 ? Math.min((t / d) * 100, 100) : 0;
     if (barFillRef.current) barFillRef.current.style.width = `${pct}%`;
-    if (barThumbRef.current) barThumbRef.current.style.left = `calc(${pct}% - 6px)`;
+    if (barThumbRef.current)
+      barThumbRef.current.style.left = `calc(${pct}% - 6px)`;
     if (mobileFillRef.current) mobileFillRef.current.style.width = `${pct}%`;
     if (timeRef.current) timeRef.current.textContent = fmt(t);
     if (durRef.current) durRef.current.textContent = fmt(d);
@@ -144,19 +148,10 @@ export default function Player() {
     const poll = () => {
       const audio = audioRef.current;
       if (!audio) return;
-      const t = audio.currentTime || 0;
-      const d = audio.duration || 0;
-      if (isFinite(d) && d > 0) {
-        progressData.current = { progress: t, duration: d };
-        updateBarDOM(t, d);
-        if ("mediaSession" in navigator) {
-          navigator.mediaSession.setPositionState({
-            duration: d,
-            playbackRate: 1,
-            position: Math.min(t, d),
-          });
-        }
-      }
+      const time = audio.currentTime || 0;
+      const dur = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+      progressData.current = { progress: time, duration: dur };
+      updateBarDOM(time, dur);
     };
 
     poll();
@@ -171,17 +166,22 @@ export default function Player() {
   }, [isPlaying, currentTrack]);
 
   function seekFromBar(clientX: number, bar: HTMLDivElement | null) {
-    if (!bar || !audioRef.current || progressData.current.duration <= 0) return;
+    if (!bar || progressData.current.duration <= 0) return;
     const rect = bar.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const val = x * progressData.current.duration;
-    audioRef.current.currentTime = val;
     progressData.current.progress = val;
     updateBarDOM(val, progressData.current.duration);
+    if (audioRef.current) {
+      audioRef.current.currentTime = val;
+    }
   }
 
   function handleVolume(val: number) {
     setVolume(val);
+    if (audioRef.current) {
+      audioRef.current.volume = val / 100;
+    }
   }
 
   function fmt(s: number) {
@@ -237,12 +237,9 @@ export default function Player() {
           </button>
           <button
             onClick={isPlaying ? pause : resume}
-            disabled={loading}
             className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0"
           >
-            {loading ? (
-              <div className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            ) : isPlaying ? (
+            {isPlaying ? (
               <Pause size={14} fill="black" color="black" />
             ) : (
               <Play size={14} fill="black" color="black" className="ml-0.5" />
@@ -253,12 +250,21 @@ export default function Player() {
           </button>
         </div>
         <div className="flex items-center gap-2 mx-3 mb-1">
-          <span ref={mobileTimeRef} className="text-[10px] text-[#b3b3b3] tabular-nums w-7 text-right">0:00</span>
+          <span
+            ref={mobileTimeRef}
+            className="text-[10px] text-[#b3b3b3] tabular-nums w-7 text-right"
+          >
+            0:00
+          </span>
           <div
             className="relative flex-1 h-1 bg-[#404040] rounded-full cursor-pointer"
             onClick={(e) => seekFromBar(e.clientX, e.currentTarget)}
-            onTouchStart={(e) => seekFromBar(e.touches[0].clientX, e.currentTarget)}
-            onTouchMove={(e) => seekFromBar(e.touches[0].clientX, e.currentTarget)}
+            onTouchStart={(e) =>
+              seekFromBar(e.touches[0].clientX, e.currentTarget)
+            }
+            onTouchMove={(e) =>
+              seekFromBar(e.touches[0].clientX, e.currentTarget)
+            }
           >
             <div
               ref={mobileFillRef}
@@ -266,7 +272,12 @@ export default function Player() {
               style={{ width: "0%" }}
             />
           </div>
-          <span ref={mobileDurRef} className="text-[10px] text-[#b3b3b3] tabular-nums w-7">0:00</span>
+          <span
+            ref={mobileDurRef}
+            className="text-[10px] text-[#b3b3b3] tabular-nums w-7"
+          >
+            0:00
+          </span>
         </div>
       </footer>
 
@@ -310,15 +321,17 @@ export default function Player() {
             </button>
             <button
               onClick={isPlaying ? pause : resume}
-              disabled={loading}
               className="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform"
             >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-              ) : isPlaying ? (
+              {isPlaying ? (
                 <Pause size={16} fill="black" color="black" />
               ) : (
-                <Play size={16} fill="black" color="black" className="ml-0.5" />
+                <Play
+                  size={16}
+                  fill="black"
+                  color="black"
+                  className="ml-0.5"
+                />
               )}
             </button>
             <button
@@ -330,7 +343,9 @@ export default function Player() {
             </button>
           </div>
           <div className="w-full flex items-center gap-2 text-xs text-[#b3b3b3]">
-            <span ref={timeRef} className="w-10 text-right tabular-nums">0:00</span>
+            <span ref={timeRef} className="w-10 text-right tabular-nums">
+              0:00
+            </span>
             <div
               ref={barRef}
               className="relative flex-1 h-1 bg-[#404040] rounded-full group cursor-pointer"
@@ -347,7 +362,9 @@ export default function Player() {
                 style={{ left: "-6px" }}
               />
             </div>
-            <span ref={durRef} className="w-10 tabular-nums">0:00</span>
+            <span ref={durRef} className="w-10 tabular-nums">
+              0:00
+            </span>
           </div>
         </div>
 

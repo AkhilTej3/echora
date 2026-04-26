@@ -7,6 +7,8 @@ export interface Track {
   thumbnail: string;
   channelName: string;
   duration: string;
+  streamUrl?: string;
+  language?: string;
   moodTags?: string[];
 }
 
@@ -106,16 +108,19 @@ function fetchRecommendations(
         videoId: track.videoId,
         title: track.title,
         channelName: track.channelName,
+        language: track.language || "",
       },
       queue: queue.map((t) => ({
         videoId: t.videoId,
         title: t.title,
         channelName: t.channelName,
+        language: t.language || "",
       })),
       history: history.map((t) => ({
         videoId: t.videoId,
         title: t.title,
         channelName: t.channelName,
+        language: t.language || "",
       })),
     }),
   })

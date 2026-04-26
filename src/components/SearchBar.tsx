@@ -6,30 +6,23 @@ import Image from "next/image";
 import Link from "next/link";
 import { Play, Pause, Music, Search as SearchIcon } from "lucide-react";
 
-interface Album {
-  id: number;
+interface JioAlbum {
+  id: string;
   name: string;
-  artistName: string;
-  artistId: number;
+  artist: string;
   artwork: string;
-  trackCount: number;
-  releaseDate: string;
-  type: string;
+  year: string;
+  songCount: string;
 }
 
-interface Artist {
-  id: number;
+interface JioArtist {
+  id: string;
   name: string;
-  genre: string;
+  artwork: string;
 }
 
-interface Song {
-  id: number;
-  trackNumber: number;
-  name: string;
-  artistName: string;
-  duration: number;
-  artwork: string;
+interface JioSong extends Track {
+  streamUrl?: string;
 }
 
 export default function SearchBar({
@@ -38,13 +31,11 @@ export default function SearchBar({
   initialQuery?: string;
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [songs, setSongs] = useState<Song[]>([]);
-  const [videos, setVideos] = useState<Track[]>([]);
+  const [albums, setAlbums] = useState<JioAlbum[]>([]);
+  const [artists, setArtists] = useState<JioArtist[]>([]);
+  const [songs, setSongs] = useState<JioSong[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [resolving, setResolving] = useState<number | null>(null);
   const { play, addToQueue, currentTrack, isPlaying } = usePlayerStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -53,7 +44,6 @@ export default function SearchBar({
       setAlbums([]);
       setArtists([]);
       setSongs([]);
-      setVideos([]);
       setSearched(false);
       return;
     }
@@ -66,12 +56,10 @@ export default function SearchBar({
       setAlbums(data.albums || []);
       setArtists(data.artists || []);
       setSongs(data.songs || []);
-      setVideos(data.videos || []);
     } catch {
       setAlbums([]);
       setArtists([]);
       setSongs([]);
-      setVideos([]);
     } finally {
       setLoading(false);
     }
@@ -85,37 +73,8 @@ export default function SearchBar({
     };
   }, [query, search]);
 
-  async function resolveAndPlay(song: Song) {
-    setResolving(song.id);
-    try {
-      const res = await fetch(
-        `/api/resolve?track=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artistName)}`
-      );
-      const yt = await res.json();
-      if (yt.videoId) {
-        play({
-          videoId: yt.videoId,
-          title: `${song.name} - ${song.artistName}`,
-          thumbnail: song.artwork,
-          channelName: song.artistName,
-          duration: yt.duration,
-        });
-      }
-    } catch {}
-    setResolving(null);
-  }
-
-  function formatDuration(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
-
   const hasResults =
-    albums.length > 0 ||
-    artists.length > 0 ||
-    songs.length > 0 ||
-    videos.length > 0;
+    albums.length > 0 || artists.length > 0 || songs.length > 0;
 
   return (
     <div>
@@ -155,8 +114,19 @@ export default function SearchBar({
                     href={`/artist/${artist.id}`}
                     className="group shrink-0 w-36"
                   >
-                    <div className="w-36 h-36 rounded-full bg-[#282828] flex items-center justify-center mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-shadow">
-                      <Music size={32} className="text-[#b3b3b3]/60 group-hover:scale-110 transition-transform" />
+                    <div className="w-36 h-36 rounded-full bg-[#282828] flex items-center justify-center mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-shadow relative">
+                      {artist.artwork ? (
+                        <Image
+                          src={artist.artwork}
+                          alt={artist.name}
+                          fill
+                          className="object-cover group-hover:scale-110 transition-transform"
+                          sizes="144px"
+                          unoptimized
+                        />
+                      ) : (
+                        <Music size={32} className="text-[#b3b3b3]/60 group-hover:scale-110 transition-transform" />
+                      )}
                     </div>
                     <p className="text-sm font-medium text-white text-center truncate group-hover:underline">
                       {artist.name}
@@ -202,8 +172,7 @@ export default function SearchBar({
                       {album.name}
                     </p>
                     <p className="text-xs text-[#b3b3b3] mt-0.5 truncate">
-                      {album.releaseDate.substring(0, 4)} •{" "}
-                      {album.artistName}
+                      {album.year} • {album.artist}
                     </p>
                   </Link>
                 ))}
@@ -216,15 +185,12 @@ export default function SearchBar({
               <h3 className="text-xl font-bold text-white mb-4">Songs</h3>
               <div className="space-y-1">
                 {songs.slice(0, 10).map((song) => {
-                  const isActive =
-                    currentTrack?.title ===
-                    `${song.name} - ${song.artistName}`;
-                  const isLoading = resolving === song.id;
+                  const isActive = currentTrack?.videoId === song.videoId;
 
                   return (
                     <div
-                      key={song.id}
-                      onClick={() => !isLoading && resolveAndPlay(song)}
+                      key={song.videoId}
+                      onClick={() => play(song)}
                       className={`group flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all ${
                         isActive
                           ? "bg-[#282828] ring-1 ring-[#1DB954]/30"
@@ -232,102 +198,10 @@ export default function SearchBar({
                       }`}
                     >
                       <div className="relative w-10 h-10 rounded overflow-hidden shrink-0">
-                        {song.artwork ? (
+                        {song.thumbnail ? (
                           <Image
-                            src={song.artwork}
-                            alt={song.name}
-                            fill
-                            className="object-cover"
-                            sizes="40px"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-[#282828]/60 flex items-center justify-center text-[#b3b3b3] text-xs">
-                            <Music size={14} />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          {isLoading ? (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : isActive && isPlaying ? (
-                            <Pause size={12} className="text-[#1DB954]" />
-                          ) : (
-                            <Play size={12} fill="white" color="white" />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className={`text-sm font-medium truncate ${
-                            isActive ? "text-[#1DB954]" : "text-white"
-                          }`}
-                        >
-                          {song.name}
-                        </p>
-                        <p className="text-xs text-[#b3b3b3] truncate">
-                          {song.artistName}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            const res = await fetch(
-                              `/api/resolve?track=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artistName)}`
-                            );
-                            const yt = await res.json();
-                            if (yt.videoId) {
-                              addToQueue({
-                                videoId: yt.videoId,
-                                title: `${song.name} - ${song.artistName}`,
-                                thumbnail: song.artwork,
-                                channelName: song.artistName,
-                                duration: yt.duration,
-                              });
-                            }
-                          } catch {}
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-[#b3b3b3] hover:text-white text-xs transition-opacity"
-                      >
-                        + Queue
-                      </button>
-
-                      <span className="text-xs text-[#b3b3b3]/70 tabular-nums">
-                        {formatDuration(song.duration)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {videos.length > 0 && (
-            <section>
-              <h3 className="text-xl font-bold text-white mb-4">
-                Videos
-              </h3>
-              <div className="space-y-1">
-                {videos.slice(0, 8).map((track) => {
-                  const isActive =
-                    currentTrack?.videoId === track.videoId;
-                  return (
-                    <div
-                      key={track.videoId}
-                      onClick={() => play(track)}
-                      className={`group flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all ${
-                        isActive
-                          ? "bg-[#282828] ring-1 ring-[#1DB954]/30"
-                          : "hover:bg-white/5"
-                      }`}
-                    >
-                      <div className="relative w-10 h-10 rounded overflow-hidden shrink-0">
-                        {track.thumbnail ? (
-                          <Image
-                            src={track.thumbnail}
-                            alt={track.title}
+                            src={song.thumbnail}
+                            alt={song.title}
                             fill
                             className="object-cover"
                             sizes="40px"
@@ -346,29 +220,32 @@ export default function SearchBar({
                           )}
                         </div>
                       </div>
+
                       <div className="flex-1 min-w-0">
                         <p
                           className={`text-sm font-medium truncate ${
                             isActive ? "text-[#1DB954]" : "text-white"
                           }`}
                         >
-                          {track.title}
+                          {song.title}
                         </p>
                         <p className="text-xs text-[#b3b3b3] truncate">
-                          {track.channelName}
+                          {song.channelName}
                         </p>
                       </div>
+
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          addToQueue(track);
+                          addToQueue(song);
                         }}
                         className="opacity-0 group-hover:opacity-100 text-[#b3b3b3] hover:text-white text-xs transition-opacity"
                       >
                         + Queue
                       </button>
+
                       <span className="text-xs text-[#b3b3b3]/70 tabular-nums">
-                        {track.duration}
+                        {song.duration}
                       </span>
                     </div>
                   );
